@@ -1,0 +1,20 @@
+# Ignore large archives and datasets
+*.zip
+*.tar.gz
+data/
+data_ppmi/
+__pycache__/
+.pytest_cache/
+scratch/
+
+# Ignore manuscript and submission-ready folder
+submission ready/
+
+# Ignore test scratch files
+test*.py
+verify*.py
+atrophy.py
+export_adni_clinical.R
+
+# Ignore local LME pkl
+results/*.pkl

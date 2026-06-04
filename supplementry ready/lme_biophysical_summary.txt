@@ -1,0 +1,19 @@
+          Mixed Linear Model Regression Results
+=========================================================
+Model:             MixedLM Dependent Variable: thickness 
+No. Observations:  8160    Method:             REML      
+No. Groups:        120     Scale:              0.1838    
+Min. group size:   68      Log-Likelihood:     -4739.6605
+Max. group size:   68      Converged:          No        
+Mean group size:   68.0                                  
+---------------------------------------------------------
+              Coef.  Std.Err.    z    P>|z| [0.025 0.975]
+---------------------------------------------------------
+Intercept      2.706    0.054  50.164 0.000  2.600  2.812
+sim_atrophy_z -0.080    0.005 -16.860 0.000 -0.089 -0.071
+age           -0.003    0.001  -3.354 0.001 -0.004 -0.001
+sex           -0.011    0.016  -0.680 0.496 -0.041  0.020
+disease_dur   -0.009    0.012  -0.740 0.459 -0.033  0.015
+mean_fd       -0.122    0.126  -0.969 0.332 -0.370  0.125
+Group Var      0.004    0.002                            
+=========================================================
