@@ -19,8 +19,8 @@ print(f"Loaded master features with {len(df)} rows.")
 
 # Standardize predictors
 scaler = StandardScaler()
-df[["bc_z", "d_eff_z", "tvi_z", "bc_x_tvi_z"]] = scaler.fit_transform(
-    df[["bc", "d_eff", "tvi", "bc_x_tvi"]]
+df[["bc_z", "d_eff_z", "tvi_z", "bc_x_tvi_z", "aqp4_z", "bc_x_aqp4_z"]] = scaler.fit_transform(
+    df[["bc", "d_eff", "tvi", "bc_x_tvi", "aqp4", "bc_x_aqp4"]]
 )
 
 # === MODEL 1: Linear Mixed Effects Model ===

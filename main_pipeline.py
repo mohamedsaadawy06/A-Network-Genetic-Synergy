@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from pathlib import Path
 from tqdm import tqdm
 
@@ -10,8 +11,8 @@ from graph_metrics import (build_weighted_graph, compute_betweenness_centrality,
                             compute_effective_distance)
 from tvi import build_tvi
 
-# Pre-load TVI once
-tvi_series = build_tvi(ALLEN_PATH, ROI_LABELS)
+# Pre-load TVI and AQP4 once
+tvi_series, aqp4_series = build_tvi(ALLEN_PATH, ROI_LABELS)
 
 def process_subject(subject_id: str, clinical_row: pd.Series, cth_df: pd.DataFrame, exclusion_log: list) -> list | None:
     """
@@ -40,6 +41,13 @@ def process_subject(subject_id: str, clinical_row: pd.Series, cth_df: pd.DataFra
         exclusion_log.append({"PATNO": subject_id, "Reason": "Missing baseline cortical thickness"})
         return None
 
+    pvs_dict = {}
+    pvs_file = DATA_ROOT / f"sub-{subject_id}" / "ses-BL" / "anat" / f"sub-{subject_id}_PVS_volumes.csv"
+    if os.path.exists(pvs_file):
+        df_pvs = pd.read_csv(pvs_file)
+        for _, r in df_pvs.iterrows():
+            pvs_dict[r['roi']] = float(r['pvs_volume'])
+
     # 5. Assemble records
     records = []
     for roi in ROI_LABELS:
@@ -48,10 +56,14 @@ def process_subject(subject_id: str, clinical_row: pd.Series, cth_df: pd.DataFra
         records.append({
             "subject_id"  : subject_id,
             "roi"         : roi,
-            "bc"          : bc_dict[roi],
+            "bc"          : bc_dict.get(roi, 0.0),
             "d_eff"       : deff_dict.get(roi, np.nan),
             "tvi"         : tvi_series.get(roi, 0.0),
-            "bc_x_tvi"    : bc_dict[roi] * tvi_series.get(roi, 0.0),
+            "bc_x_tvi"    : bc_dict.get(roi, 0.0) * tvi_series.get(roi, 0.0),
+            "aqp4"        : aqp4_series.get(roi, 0.0),
+            "bc_x_aqp4"   : bc_dict.get(roi, 0.0) * aqp4_series.get(roi, 0.0),
+            "pvs_volume"  : pvs_dict.get(roi, np.nan),
+            "bc_x_pvs"    : bc_dict.get(roi, 0.0) * pvs_dict.get(roi, np.nan),
             "thickness"   : cth_series.get(roi, np.nan),
             "age"         : clinical_row["AGE"],
             "sex"         : clinical_row["SEX"],

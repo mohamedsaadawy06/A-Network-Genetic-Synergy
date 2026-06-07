@@ -77,29 +77,23 @@ def get_graph_metrics() -> tuple[dict, dict]:
     
     return bc_dict, deff_dict
 
-def build_ad_tvi() -> pd.Series:
-    """Compute AD TVI = z(MAPT) + z(APP) - z(APOE)"""
+def build_ad_tvi():
     df = pd.read_csv(ALLEN_PATH, index_col=0)
     tvi = pd.Series(index=ROI_LABELS, dtype=float)
-    
-    mapt_z = zscore(df["MAPT"])
-    app_z = zscore(df["APP"])
-    apoe_z = zscore(df["APOE"])
-    
-    df_z = pd.DataFrame({
-        "MAPT_z": mapt_z,
-        "APP_z": app_z,
-        "APOE_z": apoe_z
-    }, index=df.index)
+    aqp4 = pd.Series(index=ROI_LABELS, dtype=float)
     
     for roi in ROI_LABELS:
-        if roi not in df_z.index:
+        if roi in df.index:
+            mapt = df.loc[roi, "MAPT"] if "MAPT" in df.columns else 0.0
+            app = df.loc[roi, "APP"] if "APP" in df.columns else 0.0
+            apoe = df.loc[roi, "APOE"] if "APOE" in df.columns else 0.0
+            aqp = df.loc[roi, "AQP4"] if "AQP4" in df.columns else 0.0
+            tvi[roi] = mapt + app - apoe
+            aqp4[roi] = aqp
+        else:
             tvi[roi] = 0.0
-            continue
-        row = df_z.loc[roi]
-        tvi[roi] = row["MAPT_z"] + row["APP_z"] - row["APOE_z"]
-        
-    return tvi
+            aqp4[roi] = 0.0
+    return tvi, aqp4
 
 def process_cohort(subject_list: list, group_label: str, df_demo: pd.DataFrame,
                    df_cdr: pd.DataFrame, df_fs: pd.DataFrame,
@@ -211,9 +205,11 @@ def process_cohort(subject_list: list, group_label: str, df_demo: pd.DataFrame,
                 "subject_id"  : subject_id,
                 "roi"         : roi,
                 "bc"          : bc_dict.get(roi, 0.0),
-                "d_eff"       : deff_dict.get(roi, 0.0),
+                "d_eff"       : deff_dict.get(roi, np.nan),
                 "tvi"         : tvi_series.get(roi, 0.0),
                 "bc_x_tvi"    : bc_dict.get(roi, 0.0) * tvi_series.get(roi, 0.0),
+                "aqp4"        : aqp4_series.get(roi, 0.0),
+                "bc_x_aqp4"   : bc_dict.get(roi, 0.0) * aqp4_series.get(roi, 0.0),
                 "atrophy_rate": atrophy_rate,
                 "age"         : age_bl,
                 "sex"         : sex,
@@ -233,7 +229,8 @@ def main():
     
     print("Loading connectome and computing graph metrics...")
     bc_dict, deff_dict = get_graph_metrics()
-    tvi_series = build_ad_tvi()
+    # Pre-load TVI and AQP4 once
+    tvi_series, aqp4_series = build_ad_tvi()
     
     # Group subjects
     # AD cohort: subjects who have at least one visit where dx1 == 'AD Dementia'
@@ -251,12 +248,12 @@ def main():
     print(f"\nCohort check: AD Dementia subjects = {len(ad_subs)}, CN controls = {len(cn_subs)}")
     
     # Process AD cohort
-    df_ad_features = process_cohort(ad_subs, "AD", df_demo, df_cdr, df_fs, bc_dict, deff_dict, tvi_series)
+    df_ad_features = process_cohort(ad_subs, "AD", df_demo, df_cdr, df_fs, bc_dict, deff_dict, tvi_series, aqp4_series)
     df_ad_features.to_csv(os.path.join(RESULTS_DIR, "oasis_master_features.csv"), index=False)
     print(f"Saved {len(df_ad_features)} ROI-subject rows to results/oasis_master_features.csv")
     
     # Process CN cohort
-    df_cn_features = process_cohort(cn_subs, "CN", df_demo, df_cdr, df_fs, bc_dict, deff_dict, tvi_series)
+    df_cn_features = process_cohort(cn_subs, "CN", df_demo, df_cdr, df_fs, bc_dict, deff_dict, tvi_series, aqp4_series)
     df_cn_features.to_csv(os.path.join(RESULTS_DIR, "oasis_cn_master_features.csv"), index=False)
     print(f"Saved {len(df_cn_features)} ROI-subject rows to results/oasis_cn_master_features.csv")
 

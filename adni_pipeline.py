@@ -66,13 +66,23 @@ def get_graph_metrics() -> tuple[dict, dict]:
     
     return bc_dict, deff_dict
 
-def build_ad_tvi() -> pd.Series:
-    df = pd.read_csv(allen_path, index_col=0)
-    mapt_z = StandardScaler().fit_transform(df[["MAPT"]])
-    app_z = StandardScaler().fit_transform(df[["APP"]])
-    apoe_z = StandardScaler().fit_transform(df[["APOE"]])
-    tvi_series = pd.Series(mapt_z.flatten() + app_z.flatten() - apoe_z.flatten(), index=df.index)
-    return tvi_series
+def build_ad_tvi():
+    df = pd.read_csv(ALLEN_PATH, index_col=0)
+    tvi = pd.Series(index=ROI_LABELS, dtype=float)
+    aqp4 = pd.Series(index=ROI_LABELS, dtype=float)
+    
+    for roi in ROI_LABELS:
+        if roi in df.index:
+            mapt = df.loc[roi, "MAPT"] if "MAPT" in df.columns else 0.0
+            app = df.loc[roi, "APP"] if "APP" in df.columns else 0.0
+            apoe = df.loc[roi, "APOE"] if "APOE" in df.columns else 0.0
+            aqp = df.loc[roi, "AQP4"] if "AQP4" in df.columns else 0.0
+            tvi[roi] = mapt + app - apoe
+            aqp4[roi] = aqp
+        else:
+            tvi[roi] = 0.0
+            aqp4[roi] = 0.0
+    return tvi, aqp4_series
 
 def process_adni_cohort(subject_list: list, group_label: str, df_ptdemog: pd.DataFrame,
                         df_dxsum: pd.DataFrame, df_cdr: pd.DataFrame, df_mmse: pd.DataFrame,
@@ -252,7 +262,7 @@ def main():
     
     print("Computing metrics...")
     bc_dict, deff_dict = get_graph_metrics()
-    tvi_series = build_ad_tvi()
+    tvi_series, aqp4_series = build_ad_tvi()
     
     # 1. Identify AD Dementia Subjects
     ad_subs = df_dxsum[df_dxsum["DIAGNOSIS"] == "Dementia"]["PTID"].unique()

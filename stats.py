@@ -19,14 +19,14 @@ print(f"Loaded master features with {len(df)} rows.")
 
 # Standardize predictors
 scaler = StandardScaler()
-df[["bc_z", "d_eff_z", "tvi_z", "bc_x_tvi_z"]] = scaler.fit_transform(
-    df[["bc", "d_eff", "tvi", "bc_x_tvi"]]
+df[["bc_z", "d_eff_z", "tvi_z", "bc_x_tvi_z", "pvs_z", "bc_x_pvs_z"]] = scaler.fit_transform(
+    df[["bc", "d_eff", "tvi", "bc_x_tvi", "pvs_volume", "bc_x_pvs"]]
 )
 
 # === MODEL 1: Linear Mixed Effects Model ===
 print("\nFitting Linear Mixed Effects (LME) Model...")
 formula = """
-thickness ~ bc_z + d_eff_z + tvi_z + bc_x_tvi_z
+thickness ~ bc_z + d_eff_z + tvi_z + bc_x_tvi_z + pvs_z + bc_x_pvs_z
              + age + sex + disease_dur + mean_fd
 """
 lme_model = smf.mixedlm(formula, df, groups=df["subject_id"])
@@ -42,6 +42,7 @@ lme_result.save(RESULTS_DIR / "lme_result.pkl")
 print("\nRunning OLS Permutation Test...")
 def get_ols_betas(df_shuffled: pd.DataFrame) -> tuple[float, float]:
     """Fast OLS for permutation null distribution."""
+    # We test the spatial transcriptomic null using the base model predictors
     X = df_shuffled[["bc_z", "d_eff_z", "tvi_z", "bc_x_tvi_z",
                      "age", "sex", "disease_dur", "mean_fd"]].values
     y = df_shuffled["thickness"].values
@@ -53,15 +54,50 @@ observed_beta_bc, observed_beta_inter = get_ols_betas(df)
 null_beta_bc = []
 null_beta_inter = []
 
-for _ in tqdm(range(1000)):
+# Load coordinates for Spin Test
+from scipy.spatial.distance import cdist
+coords, rois = [], []
+with open('data/Cammoun033_coords.txt', 'r') as f:
+    for line in f:
+        parts = line.strip().split()
+        if len(parts) >= 5:
+            rois.append(f"{parts[0]}_{parts[1]}")
+            coords.append([float(parts[2]), float(parts[3]), float(parts[4])])
+coords = np.array(coords)
+coords = coords - coords.mean(axis=0)
+sphere = coords / np.linalg.norm(coords, axis=1, keepdims=True)
+
+# Generate 1000 spin permutations
+spins = []
+np.random.seed(42)
+for _ in range(1000):
+    H = np.random.randn(3, 3)
+    Q, R = np.linalg.qr(H)
+    Q = Q @ np.diag(np.sign(np.diag(R)))
+    if np.linalg.det(Q) < 0:
+        Q[:, 0] = -Q[:, 0]
+    rotated = sphere @ Q.T
+    perm = cdist(sphere, rotated).argmin(axis=1)
+    spins.append(perm)
+
+# Sort consistently
+roi_to_idx = {roi: i for i, roi in enumerate(rois)}
+df["roi_idx"] = df["roi"].map(roi_to_idx)
+df = df.sort_values(["subject_id", "roi_idx"]).reset_index(drop=True)
+
+for perm in tqdm(spins, desc="Spin Test"):
     df_shuffled = df.copy()
-    # Shuffle outcome within each subject to preserve regional autocorrelation
-    df_shuffled["thickness"] = df.groupby("subject_id")["thickness"].transform(
-        lambda x: x.sample(frac=1).values
-    )
-    b_bc, b_int = get_ols_betas(df_shuffled)
+    # Apply the same spatial permutation to every subject
+    def apply_spin(group):
+        vals = group["thickness"].values
+        # if group is missing ROIs, this handles it via safe indexing if sorted
+        return vals[perm[:len(vals)]]
+        
+    df_shuffled["thickness"] = df_shuffled.groupby("subject_id", group_keys=False).apply(apply_spin).explode().astype(float).values
+    
+    b_bc, b_inter = get_ols_betas(df_shuffled)
     null_beta_bc.append(b_bc)
-    null_beta_inter.append(b_int)
+    null_beta_inter.append(b_inter)
 
 # Empirical p-values
 p_bc = np.mean(np.abs(null_beta_bc) >= np.abs(observed_beta_bc))
